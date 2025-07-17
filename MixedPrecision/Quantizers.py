@@ -1,10 +1,4 @@
-import os
-import pandas as pd
 import torch
-import matplotlib.pyplot as plt
-import transformer_engine.pytorch as te
-from transformer_engine.common import recipe
-import math
 
 def fp16_downcast(x):
     """

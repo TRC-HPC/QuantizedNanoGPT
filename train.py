@@ -28,6 +28,8 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import init_process_group, destroy_process_group
 
 from model import GPTConfig, GPT
+import nanoGPT.MixedPrecision.JsonReader as MxPQuantConfigReader
+import nanoGPT.MixedPrecision.Wrappers as MxPWrappers
 
 # -----------------------------------------------------------------------------
 # default config values designed to train a gpt2 (124M) on OpenWebText
@@ -77,6 +79,15 @@ config_keys = [k for k,v in globals().items() if not k.startswith('_') and isins
 exec(open('configurator.py').read()) # overrides from command line or config file
 config = {k: globals()[k] for k in config_keys} # will be useful for logging
 # -----------------------------------------------------------------------------
+
+class MxPTraining:
+    def __init__(self, quantization_config_path):
+        if not os.path.isfile(quantization_config_path):
+            MxPQuantConfigReader.ModelQuantizationConfig.generate_template(model, quantization_config_path)
+        self.instructions = MxPQuantConfigReader.ModelQuantizationConfig(quantization_config_path)
+
+    def __call__(self, model):
+        return MxPWrappers.wrap_linear_layers(model, MxPWrappers.StatWrapper, MxPWrappers.DropoutWrapper, self.instructions)
 
 # various inits, derived attributes, I/O setup
 ddp = int(os.environ.get('RANK', -1)) != -1 # is this a ddp run?
@@ -191,6 +202,9 @@ if block_size < model.config.block_size:
     model.crop_block_size(block_size)
     model_args['block_size'] = block_size # so that the checkpoint will have the right value
 model.to(device)
+# DEBUG
+model_wrapper_generator = MxPTraining(os.path.join("MixedPrecision", "QuantizationConfigs", "GPTBase.json"))
+model = model_wrapper_generator(model)
 
 # initialize a GradScaler. If enabled=False scaler is a no-op
 scaler = torch.cuda.amp.GradScaler(enabled=(dtype == 'float16'))

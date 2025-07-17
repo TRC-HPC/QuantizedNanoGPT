@@ -1,0 +1,432 @@
+{
+  "transformer": {
+    "wte": {
+      "weight_q": "fp32",
+      "input_q": "fp32",
+      "output_q": "fp32",
+      "gradient_q": "fp32"
+    },
+    "wpe": {
+      "weight_q": "fp32",
+      "input_q": "fp32",
+      "output_q": "fp32",
+      "gradient_q": "fp32"
+    },
+    "drop": {
+      "weight_q": "fp32",
+      "input_q": "fp32",
+      "output_q": "fp32",
+      "gradient_q": "fp32"
+    },
+    "h": {
+      "0": {
+        "ln_1": {
+          "weight_q": "fp32",
+          "input_q": "fp32",
+          "output_q": "fp32",
+          "gradient_q": "fp32"
+        },
+        "attn": {
+          "c_attn": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          },
+          "c_proj": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          },
+          "attn_dropout": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          },
+          "resid_dropout": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          }
+        },
+        "ln_2": {
+          "weight_q": "fp32",
+          "input_q": "fp32",
+          "output_q": "fp32",
+          "gradient_q": "fp32"
+        },
+        "mlp": {
+          "c_fc": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          },
+          "gelu": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          },
+          "c_proj": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          },
+          "dropout": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          }
+        }
+      },
+      "1": {
+        "ln_1": {
+          "weight_q": "fp32",
+          "input_q": "fp32",
+          "output_q": "fp32",
+          "gradient_q": "fp32"
+        },
+        "attn": {
+          "c_attn": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          },
+          "c_proj": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          },
+          "attn_dropout": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          },
+          "resid_dropout": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          }
+        },
+        "ln_2": {
+          "weight_q": "fp32",
+          "input_q": "fp32",
+          "output_q": "fp32",
+          "gradient_q": "fp32"
+        },
+        "mlp": {
+          "c_fc": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          },
+          "gelu": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          },
+          "c_proj": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          },
+          "dropout": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          }
+        }
+      },
+      "2": {
+        "ln_1": {
+          "weight_q": "fp32",
+          "input_q": "fp32",
+          "output_q": "fp32",
+          "gradient_q": "fp32"
+        },
+        "attn": {
+          "c_attn": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          },
+          "c_proj": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          },
+          "attn_dropout": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          },
+          "resid_dropout": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          }
+        },
+        "ln_2": {
+          "weight_q": "fp32",
+          "input_q": "fp32",
+          "output_q": "fp32",
+          "gradient_q": "fp32"
+        },
+        "mlp": {
+          "c_fc": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          },
+          "gelu": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          },
+          "c_proj": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          },
+          "dropout": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          }
+        }
+      },
+      "3": {
+        "ln_1": {
+          "weight_q": "fp32",
+          "input_q": "fp32",
+          "output_q": "fp32",
+          "gradient_q": "fp32"
+        },
+        "attn": {
+          "c_attn": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          },
+          "c_proj": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          },
+          "attn_dropout": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          },
+          "resid_dropout": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          }
+        },
+        "ln_2": {
+          "weight_q": "fp32",
+          "input_q": "fp32",
+          "output_q": "fp32",
+          "gradient_q": "fp32"
+        },
+        "mlp": {
+          "c_fc": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          },
+          "gelu": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          },
+          "c_proj": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          },
+          "dropout": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          }
+        }
+      },
+      "4": {
+        "ln_1": {
+          "weight_q": "fp32",
+          "input_q": "fp32",
+          "output_q": "fp32",
+          "gradient_q": "fp32"
+        },
+        "attn": {
+          "c_attn": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          },
+          "c_proj": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          },
+          "attn_dropout": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          },
+          "resid_dropout": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          }
+        },
+        "ln_2": {
+          "weight_q": "fp32",
+          "input_q": "fp32",
+          "output_q": "fp32",
+          "gradient_q": "fp32"
+        },
+        "mlp": {
+          "c_fc": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          },
+          "gelu": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          },
+          "c_proj": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          },
+          "dropout": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          }
+        }
+      },
+      "5": {
+        "ln_1": {
+          "weight_q": "fp32",
+          "input_q": "fp32",
+          "output_q": "fp32",
+          "gradient_q": "fp32"
+        },
+        "attn": {
+          "c_attn": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          },
+          "c_proj": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          },
+          "attn_dropout": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          },
+          "resid_dropout": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          }
+        },
+        "ln_2": {
+          "weight_q": "fp32",
+          "input_q": "fp32",
+          "output_q": "fp32",
+          "gradient_q": "fp32"
+        },
+        "mlp": {
+          "c_fc": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          },
+          "gelu": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          },
+          "c_proj": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          },
+          "dropout": {
+            "weight_q": "fp32",
+            "input_q": "fp32",
+            "output_q": "fp32",
+            "gradient_q": "fp32"
+          }
+        }
+      }
+    },
+    "ln_f": {
+      "weight_q": "fp32",
+      "input_q": "fp32",
+      "output_q": "fp32",
+      "gradient_q": "fp32"
+    }
+  },
+  "lm_head": {
+    "weight_q": "fp32",
+    "input_q": "fp32",
+    "output_q": "fp32",
+    "gradient_q": "fp32"
+  }
+}
