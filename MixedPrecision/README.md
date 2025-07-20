@@ -7,6 +7,7 @@ instructions = JsonReader.ModelQuantizationConfig(quantization_config_path)
 model = Wrappers.wrap_linear_layers(model, MxPWrappers.StatWrapper, MxPWrappers.DropoutWrapper, instructions)
 ```
 See example in train.py.
+
 **TODO:** implement gradient quantization
 
 Schedulers handle changing the quantizers at runtime.  Schedulers.no_change() is a no-op - a placeholder that doesn't actually change anything.
