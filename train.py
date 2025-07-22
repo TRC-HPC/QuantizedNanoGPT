@@ -28,8 +28,8 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import init_process_group, destroy_process_group
 
 from model import GPTConfig, GPT
-import nanoGPT.MixedPrecision.JsonReader as MxPQuantConfigReader
-import nanoGPT.MixedPrecision.Wrappers as MxPWrappers
+import MixedPrecision.JsonReader as MxPQuantConfigReader
+import MixedPrecision.Wrappers as MxPWrappers
 
 # -----------------------------------------------------------------------------
 # default config values designed to train a gpt2 (124M) on OpenWebText
