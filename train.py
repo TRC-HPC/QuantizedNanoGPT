@@ -202,7 +202,8 @@ if block_size < model.config.block_size:
     model.crop_block_size(block_size)
     model_args['block_size'] = block_size # so that the checkpoint will have the right value
 model.to(device)
-# DEBUG
+
+# wrap model layers in low-precision layers
 model_wrapper_generator = MxPTraining(os.path.join("MixedPrecision", "QuantizationConfigs", "GPTBase.json"))
 model = model_wrapper_generator(model)
 
