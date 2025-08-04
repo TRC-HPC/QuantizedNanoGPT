@@ -1,6 +1,6 @@
 import torch.nn as nn
 import numpy as np
-from .quantizing import quantize_block, ActQuantizer, WeightQuantizer, BasicQuantizer
+from .Quantizers import quantize_block, ActQuantizer, WeightQuantizer, BasicQuantizer
 
 DEFAULT_Q_VALUE = 'fp32'
 
