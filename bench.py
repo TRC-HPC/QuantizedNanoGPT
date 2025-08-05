@@ -8,16 +8,24 @@ import time
 import torch
 from model import GPTConfig, GPT
 
+import MixedPrecision.JsonReader as MxPQuantConfigReader
+import MixedPrecision.Wrappers as MxPWrappers
+
 # -----------------------------------------------------------------------------
 batch_size = 12
 block_size = 1024
 bias = False
 real_data = True
+max_iters = 60000
+eval_iters = 200
+log_interval = 10
 seed = 1337
 device = 'cuda' # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1', etc.
 dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16' # 'float32' or 'bfloat16' or 'float16'
-compile = True # use PyTorch 2.0 to compile the model to be faster
+compile = False # use PyTorch 2.0 to compile the model to be faster
 profile = False # use pytorch profiler, or just simple benchmarking?
+dataset = 'openwebtext'
+eval_interval = 2000
 exec(open('configurator.py').read()) # overrides from command line or config file
 # -----------------------------------------------------------------------------
 
@@ -29,9 +37,17 @@ device_type = 'cuda' if 'cuda' in device else 'cpu' # for later use in torch.aut
 ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
 ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
 
+class MxPTraining:
+    def __init__(self, quantization_config_path):
+        if not os.path.isfile(quantization_config_path):
+            MxPQuantConfigReader.ModelQuantizationConfig.generate_template(model, quantization_config_path)
+        self.instructions = MxPQuantConfigReader.ModelQuantizationConfig(quantization_config_path)
+
+    def __call__(self, model):
+        return MxPWrappers.wrap_linear_layers(model, MxPWrappers.StatWrapper, MxPWrappers.DropoutWrapper, self.instructions)
+
 # data loading init
 if real_data:
-    dataset = 'openwebtext'
     data_dir = os.path.join('data', dataset)
     train_data = np.memmap(os.path.join(data_dir, 'train.bin'), dtype=np.uint16, mode='r')
     def get_batch(split):
@@ -57,11 +73,31 @@ gptconf = GPTConfig(
 model = GPT(gptconf)
 model.to(device)
 
+# wrap model layers in low-precision layers
+model_wrapper_generator = MxPTraining(os.path.join("MixedPrecision", "QuantizationConfigs", "GPTBase.json"))
+model = model_wrapper_generator(model)
+
 optimizer = model.configure_optimizers(weight_decay=1e-2, learning_rate=1e-4, betas=(0.9, 0.95), device_type=device_type)
 
 if compile:
     print("Compiling model...")
     model = torch.compile(model) # pytorch 2.0
+
+# helps estimate an arbitrarily accurate loss over either split using many batches
+@torch.no_grad()
+def estimate_loss():
+    out = {}
+    model.eval()
+    for split in ['train', 'val']:
+        losses = torch.zeros(eval_iters)
+        for k in range(eval_iters):
+            X, Y = get_batch(split)
+            with ctx:
+                logits, loss = model(X, Y)
+            losses[k] = loss.item()
+        out[split] = losses.mean()
+    model.train()
+    return out
 
 if profile:
     # useful docs on pytorch profiler:
@@ -81,7 +117,7 @@ if profile:
     ) as prof:
 
         X, Y = get_batch('train')
-        for k in range(num_steps):
+        for iter_num in range(num_steps):
             with ctx:
                 logits, loss = model(X, Y)
             X, Y = get_batch('train')
@@ -89,29 +125,28 @@ if profile:
             loss.backward()
             optimizer.step()
             lossf = loss.item()
-            print(f"{k}/{num_steps} loss: {lossf:.4f}")
+            print(f"{iter_num}/{num_steps} loss: {lossf:.4f}")
 
             prof.step() # notify the profiler at end of each step
 
 else:
 
     # simple benchmarking
-    torch.cuda.synchronize()
-    for stage, num_steps in enumerate([10, 20]): # burnin, then benchmark
-        t0 = time.time()
+    min_val_loss = float("inf")
+    X, Y = get_batch('train')
+    for iter_num in range(max_iters):
+        if iter_num % eval_interval == 0:
+            losses = estimate_loss()
+            min_val_loss = min(min_val_loss, losses['val'])
+            print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
+            print(f"Minimal validation loss: {min_val_loss:.4f}")
+
+        with ctx:
+            logits, loss = model(X, Y)
         X, Y = get_batch('train')
-        for k in range(num_steps):
-            with ctx:
-                logits, loss = model(X, Y)
-            X, Y = get_batch('train')
-            optimizer.zero_grad(set_to_none=True)
-            loss.backward()
-            optimizer.step()
-            lossf = loss.item()
-            print(f"{k}/{num_steps} loss: {lossf:.4f}")
-        torch.cuda.synchronize()
-        t1 = time.time()
-        dt = t1-t0
-        mfu = model.estimate_mfu(batch_size * 1 * num_steps, dt)
-        if stage == 1:
-            print(f"time per iteration: {dt/num_steps*1000:.4f}ms, MFU: {mfu*100:.2f}%")
+        optimizer.zero_grad(set_to_none=True)
+        loss.backward()
+        optimizer.step()
+        lossf = loss.item()
+        if iter_num % log_interval == 0:
+            print(f"{iter_num}/{max_iters} loss: {lossf:.4f}")
