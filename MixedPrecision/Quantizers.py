@@ -1,5 +1,8 @@
 import torch
 
+
+QUANTIZATION_NECESSITY_THRESHOLD = 16
+
 def fp16_downcast(x):
     """
     Fp16 Emulator:
@@ -100,18 +103,21 @@ class AsymSTEQuantize(torch.autograd.Function):
     def backward(ctx, grad_output):
         return grad_output, None, None, None
 
+BITS_TO_DTYPE_MAP = {
+    32: torch.float32,
+    16: torch.float16,
+    8:  torch.float8_e4m3fnuz
+}
+
 class BasicQuantizer(torch.nn.Module):
     
     def __init__(self, precision) -> None:
         super(BasicQuantizer, self).__init__()
-        self.precision = precision
+        self.quant_dtype = BITS_TO_DTYPE_MAP[precision]
         
     def forward(self, x):
-        if self.precision == 16:
-            return x.half().float()
-        else:
-            return x
-    
+        return x.to(self.quant_dtype).to(x.dtype)
+        
     def free(self) -> None:
         pass
     
@@ -124,12 +130,12 @@ class ActQuantizer(torch.nn.Module):
     for the activations.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, precision) -> None:
         super(ActQuantizer, self).__init__()
         self.register_buffer("maxq", torch.tensor(0))
         self.register_buffer("scale", torch.zeros(1))
         self.register_buffer("zero", torch.zeros(1))
-        self.bits = 16
+        self.bits = precision
 
     def free(self) -> None:
         self.zero = None
@@ -137,7 +143,7 @@ class ActQuantizer(torch.nn.Module):
 
     def forward(self, x):
         x_dtype = x.dtype
-        if self.bits == 16:
+        if self.bits == torch.finfo(x.dtype).bits:
             return x
         elif self.sym:
             return STEQuantize.apply(x, self.scale, self.maxq).to(x_dtype)
@@ -195,7 +201,7 @@ class ActQuantizer(torch.nn.Module):
         self.zero = self.zero.repeat(1, 1, 1, self.groupsize).reshape(init_shape)
 
     def find_params(self, x) -> None:
-        if self.bits == 16:
+        if self.bits >= QUANTIZATION_NECESSITY_THRESHOLD:  # Quantization unnecessary
             return
 
         dev = x.device
@@ -239,110 +245,6 @@ class ActQuantizer(torch.nn.Module):
                 .repeat(1, reshaped_x.shape[-1])
                 .reshape(init_shape)
             )
-
-"""
-class ActQuantWrapper(torch.nn.Module):
-    
-    #This class is a wrapper for the activation quantization.
-    #We extract the FP features in the forward pass and quantize the rest using
-    #the self.quantizer object.
-    #If a rotation Q is provided, the weight matrix will be rotated,
-    #a pre-forward hook will be registered to rotate the activation before quantization.
-    
-
-    def __init__(self, module: torch.nn.Linear) -> None:
-        super(ActQuantWrapper, self).__init__()
-        # assert isinstance(module, torch.nn.Linear)
-        self.module = module
-        self.weight = module.weight
-        self.bias = module.bias
-        self.quantizer = ActQuantizer()
-        self.out_quantizer = ActQuantizer()
-        self.register_buffer("had_K", torch.tensor(0))
-        self._buffers["had_K"] = None
-        self.K = 1
-        self.online_full_had = False
-        self.online_partial_had = False
-        self.had_dim = 0
-        self.fp32_had = False
-
-    def extra_repr(self) -> str:
-        str_ = f"Input Quantizer Bits: {self.quantizer.bits}"
-        if self.quantizer.bits < 16:
-            str_ += (
-                f" (Asymmetric Per-Token)"
-                if not self.quantizer.sym
-                else f" (Symmetric Per-Token)"
-            )
-
-        str_ += f"\nOutput Quantizer Bits: {self.out_quantizer.bits}"
-        if self.out_quantizer.bits < 16:
-            str_ += (
-                f" (Asymmetric Per-Token)"
-                if not self.out_quantizer.sym
-                else f" (Symmetric Per-Token)"
-            )
-
-        return str_
-
-    def forward(self, x, R1=None, R2=None, transpose=False):
-        x_dtype = x.dtype
-
-        # Rotate, if needed
-        if self.online_full_had:
-            if self.fp32_had:  # Full Hadamard in FP32
-                x = hadamard_utils.matmul_hadU_cuda(x.float(), self.had_K, self.K).to(
-                    x_dtype
-                )
-            else:  # Full Hadamard in FP16
-                x = hadamard_utils.matmul_hadU_cuda(x, self.had_K, self.K)
-
-        elif self.online_partial_had:
-            # todo: implement this in QAttention to avoid reshaping!
-
-            if self.fp32_had:
-                x = x.float()
-
-            init_shape = x.shape
-            if self.K == 1:
-                x = (
-                    HadamardTransform.apply(
-                        x.reshape(
-                            -1, init_shape[-1] // self.had_dim, self.had_dim
-                        ).transpose(1, 2)
-                    )
-                    / math.sqrt(init_shape[-1] // self.had_dim)
-                ).transpose(1, 2)
-            else:
-                x = (
-                    self.had_K.to(x.dtype)
-                    @ x.reshape(-1, init_shape[-1] // self.had_dim, self.had_dim)
-                ) / math.sqrt(init_shape[-1] // self.had_dim)
-
-            if self.fp32_had:
-                x = x.to(x_dtype)
-            x = x.reshape(init_shape)
-
-        # Quantizing the input:
-        if self.quantizer.bits < 16:  # Quantize, if needed
-            self.quantizer.find_params(x)
-            x = self.quantizer(x).to(x_dtype)
-            self.quantizer.free()
-        
-        # This is where we perform the original module: 
-        if R1 is not None:
-            x = self.module(x, R1, R2, transpose).to(x_dtype)
-        else:
-            x = self.module(x).to(x_dtype)
-
-        # Quantizing the output:
-        if self.out_quantizer.bits < 16:  # Quantize the output, if needed
-            self.out_quantizer.find_params(x)
-            x = self.out_quantizer(x).to(x_dtype)
-            self.out_quantizer.free()
-
-        return x
-"""
 
 class WeightQuantizer(torch.nn.Module):
     """From GPTQ Repo"""
@@ -436,7 +338,7 @@ class WeightQuantizer(torch.nn.Module):
         self.zero = self.zero.reshape(init_shape)
 
     def find_params(self, x) -> None:
-        if self.bits == 16:
+        if self.bits >= QUANTIZATION_NECESSITY_THRESHOLD:  # Quantization unnecessary
             return
         dev = x.device
         self.maxq = self.maxq.to(dev)
@@ -508,7 +410,7 @@ class WeightQuantizer(torch.nn.Module):
     # TODO: This should be better refactored into `forward`, which applies quantize and dequantize. A new method `quantize` should be added (if needed) to return the quantized integers and scales, like in ActQuantizer.
     def forward(self, x):
         x_dtype = x.dtype
-        if self.ready() and self.bits < 16:
+        if self.ready() and self.bits < QUANTIZATION_NECESSITY_THRESHOLD:
             if self.sym:
                 return STEQuantize.apply(x, self.scale, self.maxq).to(x_dtype)
             return AsymSTEQuantize.apply(x, self.scale, self.zero, self.maxq).to(
@@ -519,7 +421,7 @@ class WeightQuantizer(torch.nn.Module):
     # Return int value and scale in addtional to fake quantized weight
     def fake_quantize(self, x):
         x_dtype = x.dtype
-        if self.ready() and self.bits < 16:
+        if self.ready() and self.bits < QUANTIZATION_NECESSITY_THRESHOLD:
             scale = self.scale.to(x.device)
             q = torch.clamp(torch.round(x / scale), -(self.maxq + 1), self.maxq)
             return (scale * q).to(x_dtype), q, scale
