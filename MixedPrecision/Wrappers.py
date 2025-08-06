@@ -89,13 +89,13 @@ class StatWrapper(nn.Module):
 
     def forward(self, input):
         # If necessary we quantize: weight, input and output as defined 
-        self.linear = quantize_block(self.linear, self.quantizer_w)
+        quantized_linear = quantize_block(self.linear, self.quantizer_w)
         self.quantizer_input.find_params(input)       
         x_dtype = input.dtype
         input = self.quantizer_input(input).to(x_dtype)
         self.quantizer_input.free()
                        
-        output = self.linear(input)
+        output = quantized_linear(input)
         
         self.quantizer_output.find_params(output)       
         x_dtype = output.dtype
