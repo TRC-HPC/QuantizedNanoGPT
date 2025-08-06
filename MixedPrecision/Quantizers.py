@@ -3,37 +3,17 @@ import torch
 
 QUANTIZATION_NECESSITY_THRESHOLD = 16
 
-def fp16_downcast(x):
-    """
-    Fp16 Emulator:
-    Converts an FP32 tensor to FP16 and then back to FP32
-    Parameters:
-         x - fp32 tensor
-    Returns:
-        truncated fp32 tensor
-    """
-    # Cast to FP16 and back to FP32 - this is a STE. We will probably need to create something similar for other operations (lower precisions).
-    return x.half().float()
-
-def convert_block_to_fp16(block):
-    """
-    Converts all FP32 parameters in the block to FP16 using the fp16_downcast function.
-    """
-    with torch.no_grad():
-        for name, param in block.named_parameters():
-            if param.dtype == torch.float32:
-                # Convert parameter data to FP16C
-                param.data = fp16_downcast(param.data)
-    return block
-        
 # We generalized this method to work with any quantizer    
-def quantize_block(block, quantizer):
-    
-    with torch.no_grad():
-        for name, param in block.named_parameters():
-            quantizer.find_params(param.data)       
-            x_dtype = param.data.dtype
-            param.data = quantizer(param.data).to(x_dtype)
+def quantize_block(block, quantizer, free_quantizer=True):
+    if hasattr(block, "weight"):
+        with torch.no_grad():
+            quantizer.find_params(block.weight.data)      
+        block.weight = torch.nn.Parameter(quantizer(block.weight))
+    else:
+        for child in block.children():
+            quantize_block(child, quantizer=quantizer, free_quantizer=False)
+    if free_quantizer:
+        with torch.no_grad():
             quantizer.free()
     return block
 
