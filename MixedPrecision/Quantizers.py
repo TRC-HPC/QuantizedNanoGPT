@@ -1,20 +1,20 @@
 import torch
+import abc
 
 
 QUANTIZATION_NECESSITY_THRESHOLD = 16
 
+        
 # We generalized this method to work with any quantizer    
-def quantize_block(block, quantizer, free_quantizer=True):
+def quantize_block(block, quantizer):
     if hasattr(block, "weight"):
         with torch.no_grad():
             quantizer.find_params(block.weight.data)      
         block.weight = torch.nn.Parameter(quantizer(block.weight))
+        quantizer.free()
     else:
         for child in block.children():
-            quantize_block(child, quantizer=quantizer, free_quantizer=False)
-    if free_quantizer:
-        with torch.no_grad():
-            quantizer.free()
+            quantize_block(child, quantizer=quantizer)
     return block
 
 
@@ -60,28 +60,30 @@ def sym_quant_dequant(x, scale, maxq):
 
 class STEQuantize(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, x, scale, maxq):
-        scale = scale.to(x.device)
-        q = torch.clamp(torch.round(x / scale), -(maxq + 1), maxq)
-        return scale * q
+    def forward(ctx, x, quantize_fn):
+        return quantize_fn(x)
 
     @staticmethod
     def backward(ctx, grad_output):
         # Straight-through estimator: just pass the gradient through
         return grad_output, None, None
 
+class IntQuantizations:
+    class SymSTEQuantize(STEQuantize):
+        @staticmethod
+        def forward(ctx, x, scale, maxq):
+            scale = scale.to(x.device)
+            q = torch.clamp(torch.round(x / scale), -(maxq + 1), maxq)
+            return scale * q
 
-class AsymSTEQuantize(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, x, scale, zero, maxq):
-        scale = scale.to(x.device)
-        zero = zero.to(x.device)
-        q = torch.clamp(torch.round(x / scale) + zero, 0, maxq)
-        return scale * (q - zero)
+    class AsymSTEQuantize(STEQuantize):
+        @staticmethod
+        def forward(ctx, x, scale, zero, maxq):
+            scale = scale.to(x.device)
+            zero = zero.to(x.device)
+            q = torch.clamp(torch.round(x / scale) + zero, 0, maxq)
+            return scale * (q - zero)
 
-    @staticmethod
-    def backward(ctx, grad_output):
-        return grad_output, None, None, None
 
 BITS_TO_DTYPE_MAP = {
     32: torch.float32,
@@ -89,13 +91,16 @@ BITS_TO_DTYPE_MAP = {
     8:  torch.float8_e4m3fnuz
 }
 
-class BasicQuantizer(torch.nn.Module):
+class FloatQuantizer(torch.nn.Module):
     
     def __init__(self, precision) -> None:
-        super(BasicQuantizer, self).__init__()
+        super(FloatQuantizer, self).__init__()
         self.quant_dtype = BITS_TO_DTYPE_MAP[precision]
-        
+
     def forward(self, x):
+        return STEQuantize.apply(x, self.quantize)
+        
+    def quantize(self, x):
         return x.to(self.quant_dtype).to(x.dtype)
         
     def free(self) -> None:
@@ -104,14 +109,14 @@ class BasicQuantizer(torch.nn.Module):
     def find_params(self, x) -> None:
         pass
 
-class ActQuantizer(torch.nn.Module):
+class IntActQuantizer(torch.nn.Module):
     """
     A class for quantizing the activations. We only support (both sym. and asym.) per-token quantization
     for the activations.
     """
 
     def __init__(self, precision) -> None:
-        super(ActQuantizer, self).__init__()
+        super(IntActQuantizer, self).__init__()
         self.register_buffer("maxq", torch.tensor(0))
         self.register_buffer("scale", torch.zeros(1))
         self.register_buffer("zero", torch.zeros(1))
@@ -126,8 +131,8 @@ class ActQuantizer(torch.nn.Module):
         if self.bits == torch.finfo(x.dtype).bits:
             return x
         elif self.sym:
-            return STEQuantize.apply(x, self.scale, self.maxq).to(x_dtype)
-        return AsymSTEQuantize.apply(x, self.scale, self.zero, self.maxq).to(x_dtype)
+            return IntQuantizations.SymSTEQuantize.apply(x, self.scale, self.maxq).to(x_dtype)
+        return IntQuantizations.AsymSTEQuantize.apply(x, self.scale, self.zero, self.maxq).to(x_dtype)
        
     # Different from `forward`, this method returns quantized integers, scales (and zeros if asymmetric).
     def quantize(self, x):
@@ -226,11 +231,11 @@ class ActQuantizer(torch.nn.Module):
                 .reshape(init_shape)
             )
 
-class WeightQuantizer(torch.nn.Module):
+class IntWeightQuantizer(torch.nn.Module):
     """From GPTQ Repo"""
 
     def __init__(self, shape: int = 1) -> None:
-        super(WeightQuantizer, self).__init__()
+        super(IntWeightQuantizer, self).__init__()
         self.register_buffer("maxq", torch.tensor(0))
         self.register_buffer("scale", torch.zeros(shape))
         self.register_buffer("zero", torch.zeros(shape))
@@ -392,8 +397,8 @@ class WeightQuantizer(torch.nn.Module):
         x_dtype = x.dtype
         if self.ready() and self.bits < QUANTIZATION_NECESSITY_THRESHOLD:
             if self.sym:
-                return STEQuantize.apply(x, self.scale, self.maxq).to(x_dtype)
-            return AsymSTEQuantize.apply(x, self.scale, self.zero, self.maxq).to(
+                return IntQuantizations.SymSTEQuantize.apply(x, self.scale, self.maxq).to(x_dtype)
+            return IntQuantizations.AsymSTEQuantize.apply(x, self.scale, self.zero, self.maxq).to(
                 x_dtype
             )
         return x
