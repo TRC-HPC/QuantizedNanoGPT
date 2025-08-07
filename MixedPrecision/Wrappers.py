@@ -1,73 +1,30 @@
 import torch.nn as nn
 import numpy as np
-from .Quantizers import quantize_block, ActQuantizer, WeightQuantizer, BasicQuantizer
+from .Quantizers import IntActQuantizer, IntWeightQuantizer, FloatQuantizer
 
 DEFAULT_Q_VALUE = 'fp32'
 
 # TODO: not sure this function should be here. This is a simple mapping function that maps the string input to the specific quantization needed 
 def map_quantizer(input_str, weight=False):
+    if input_str.startswith('fp'):
+        precision = int(input_str[len('fp'):])
+        return FloatQuantizer(precision)
     
-    if input_str == 'fp16':
-        return BasicQuantizer(16)
-    
-    if input_str == 'fp32':
-        return BasicQuantizer(32)
-    
-    if input_str == '8bit':
+    if input_str.endswith('bit'):
+        precision = int(input_str[:-len('bit')])
         if weight:
-            quantizer = WeightQuantizer()
-            quantizer.configure(bits=8)  # TODO: many parameters of quantizer...
+            quantizer = IntWeightQuantizer()
+            quantizer.configure(bits=precision)  # TODO: many parameters of quantizer...
             return quantizer
         else:
-            quantizer = ActQuantizer()
-            quantizer.configure(bits=8)
-            return quantizer
-        
-    if input_str == '4bit':
-        if weight:
-            quantizer = WeightQuantizer()
-            quantizer.configure(bits=4)  # TODO: many parameters of quantizer...
-            return quantizer
-        else:
-            quantizer = ActQuantizer()
-            quantizer.configure(bits=4)
+            quantizer = IntActQuantizer()
+            quantizer.configure(bits=precision)
             return quantizer
     
-class DropoutWrapper(nn.Module):
-    def __init__(self, child, est_interval, weight_q='fp16', input_q='fp16', output_q='fp16', gradient_q='fp16', bias=True, beta=0.99, **kwargs):
-        super().__init__()
-        self.linear = child
-
-        # Quantizers
-        self.weight_q = weight_q
-        self.input_q = input_q
-        self.output_q = output_q
-        self.gradient_q = gradient_q
-        
-        # TODO: We would like the constructor to receive the quantizer so we can change this easily...
-        self.quantizer_w = map_quantizer(self.weight_q, True)
-        self.quantizer_input = map_quantizer(self.input_q, False)
-        self.quantizer_output = map_quantizer(self.output_q, False)
-        
-    def forward(self, input):
-        
-        # We quantize: weight, input and output as defined 
-        self.linear = quantize_block(self.linear, self.quantizer_w)
-        self.quantizer_input.find_params(input)       
-        x_dtype = input.dtype
-        input = self.quantizer_input(input).to(x_dtype)
-        self.quantizer_input.free()
-                       
-        output = self.linear(input)
-        
-        self.quantizer_output.find_params(output)       
-        x_dtype = output.dtype
-        input = self.quantizer_output(output).to(x_dtype)
-        self.quantizer_output.free()
-             
-        return output
+    raise ValueError("Only float (given as 'fp...') and int (given as '...bit') quantizations supported")
     
-class StatWrapper(nn.Module):
+    
+class LinearWrapper(nn.Module):
     def __init__(self, child, est_interval, weight_q='fp16', input_q='fp16', output_q='fp16', gradient_q='fp16', bias=True, beta=0.99, **kwargs):
         super().__init__()
         self.linear = child 
@@ -88,28 +45,42 @@ class StatWrapper(nn.Module):
         self.quantizer_output = map_quantizer(self.output_q, False)
 
     def forward(self, input):
-        # If necessary we quantize: weight, input and output as defined 
-        quantized_linear = quantize_block(self.linear, self.quantizer_w)
+        quantized_weight = self.quantizer_w(self.linear.weight)
         self.quantizer_input.find_params(input)       
         x_dtype = input.dtype
-        input = self.quantizer_input(input).to(x_dtype)
+        quantized_input = self.quantizer_input(input).to(x_dtype)
         self.quantizer_input.free()
                        
-        output = quantized_linear(input)
+        output = nn.functional.linear(input=quantized_input, weight=quantized_weight, bias=self.linear.bias)
         
         self.quantizer_output.find_params(output)       
         x_dtype = output.dtype
-        input = self.quantizer_output(output).to(x_dtype)
+        quantized_output = self.quantizer_output(output).to(x_dtype)
+
+        # Uncomment below code to watch the gradients computed (hooks are added in the same order as their backpropagation order)
+        # try:
+        #     def stop_grad(grad, name):
+        #         import pdb; pdb.set_trace()
+        #     from functools import partial
+        #     quantized_output.register_hook(partial(stop_grad, name=self.full_name + ".quantized_output"))
+        #     output.register_hook(partial(stop_grad, name=self.full_name + ".output"))
+        #     quantized_input.register_hook(partial(stop_grad, name=self.full_name + ".quantized_input"))
+        #     quantized_weight.register_hook(partial(stop_grad, name=self.full_name + ".quantized_weight"))
+        #     self.linear.weight.register_hook(partial(stop_grad, name=self.full_name + ".self.linear.weight"))
+        #     input.register_hook(partial(stop_grad, name=self.full_name + ".input"))
+        # except RuntimeError:  # don't register hooks when gradients are disabled, such as during evaluation
+        #     pass
+        
         self.quantizer_output.free()
              
-        return output
+        return quantized_output
 
 def update_precision(module, func, sort_func, filter_func, iter_num, parent_name=None, update=False): #, newVal=None):
     if update:
         for name, child in module.named_children():
             full_name = f"{parent_name}.{name}" if parent_name else name
 
-            if (isinstance(child, DropoutWrapper) or isinstance(child, StatWrapper)):
+            if isinstance(child, LinearWrapper):
                 child.weight_q, child.input_q, child.output_q, child.gradient_q = func(child, iter_num, full_name)
                 child.quantizer_w = map_quantizer(child.weight_q, True)
                 child.quantizer_input = map_quantizer(child.input_q, False)
@@ -119,7 +90,7 @@ def update_precision(module, func, sort_func, filter_func, iter_num, parent_name
                 update_precision(child, func, sort_func, filter_func, iter_num, parent_name=full_name, update=update)
 
 # TODO: this should be extended also to LayerNorms (what about embeddings??). It should receive instead of a run_flag an instructor that will tell us how to define each layer
-def wrap_linear_layers(module, wrapper_cls, wrapper_cls_quantize, instructions, parent_name = None, **kwargs):
+def wrap_linear_layers(module, wrapper_cls, instructions=None, parent_name = None, **kwargs):
     """
     Recursively replace all nn.Linear layers in `module` with instances of `wrapper_cls`.
 
@@ -133,17 +104,17 @@ def wrap_linear_layers(module, wrapper_cls, wrapper_cls_quantize, instructions, 
         full_name = f"{parent_name}.{name}" if parent_name else name
         
         # TODO: This does not wrap the LayerNorm which is not nn.LayerNorm but locally defined!
-        if isinstance(child, nn.Linear) or isinstance(child, nn.LayerNorm):
-            bias = child.bias is not None
-            # We want to get from a predefined instructor how to initialize the given layer:
-            weight_q, input_q, output_q, gradient_q = instructions.get_quantization_config(full_name)       
-            wrapped = wrapper_cls(child, weight_q, input_q, output_q, gradient_q, bias=bias, parent_name=full_name, **kwargs)  # Replace the linear layer in the parent module
+
+        if isinstance(child, nn.Linear):
+            if instructions is not None:
+                bias = child.bias is not None
+                # We want to get from a predefined instructor how to initialize the given layer:
+                weight_q, input_q, output_q, gradient_q = instructions.get_quantization_config(full_name)       
+                wrapped = wrapper_cls(child, weight_q, input_q, output_q, gradient_q, bias=bias, parent_name=full_name, **kwargs)  # Replace the linear layer in the parent module
+            else:
+                wrapped = wrapper_cls(child, **kwargs)
             setattr(module, name, wrapped)
-        elif isinstance(child, nn.Dropout):
-            weight_q, input_q, output_q, gradient_q = instructions.get_quantization_config(full_name)
-            wrapped = wrapper_cls_quantize(child, weight_q, input_q, output_q, gradient_q, bias=None, **kwargs)
-            setattr(module, name, wrapped)  # Replace the linear layer in the parent module
         else:
             # Recursively wrap submodules
-            wrap_linear_layers(child, wrapper_cls, wrapper_cls_quantize, instructions, parent_name=full_name, **kwargs)
+            wrap_linear_layers(child, wrapper_cls, instructions, parent_name=full_name, **kwargs)
     return module
