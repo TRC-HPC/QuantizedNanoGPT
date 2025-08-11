@@ -87,7 +87,7 @@ class MxPTraining:
         self.instructions = MxPQuantConfigReader.ModelQuantizationConfig(quantization_config_path)
 
     def __call__(self, model):
-        return MxPWrappers.wrap_linear_layers(model, MxPWrappers.StatWrapper, MxPWrappers.DropoutWrapper, self.instructions)
+        return MxPWrappers.wrap_linear_layers(model, MxPWrappers.LinearWrapper, self.instructions)
 
 # various inits, derived attributes, I/O setup
 ddp = int(os.environ.get('RANK', -1)) != -1 # is this a ddp run?
