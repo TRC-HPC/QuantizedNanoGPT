@@ -85,23 +85,27 @@ class IntQuantizations:
             return scale * (q - zero)
 
 
-BITS_TO_DTYPE_MAP = {
+BITS_TO_FP_DTYPE_MAP = {
     32: torch.float32,
     16: torch.float16,
-    8:  torch.float8_e4m3fnuz
+    8:  torch.float8_e4m3fn
 }
 
 class FloatQuantizer(torch.nn.Module):
     
     def __init__(self, precision) -> None:
         super(FloatQuantizer, self).__init__()
-        self.quant_dtype = BITS_TO_DTYPE_MAP[precision]
+        self.quant_dtype = BITS_TO_FP_DTYPE_MAP[precision]
 
     def forward(self, x):
-        return STEQuantize.apply(x, self.quantize)
+        return STEQuantize.apply(x, self.scaled_quantize)
         
     def quantize(self, x):
         return x.to(self.quant_dtype).to(x.dtype)
+    
+    def scaled_quantize(self, x, scale_bounds=(torch.finfo(torch.float16).smallest_normal, torch.finfo(torch.float16).max)):
+        scale = x.abs().max(dim=-1, keepdim=True)[0].clamp_(min=scale_bounds[0], max=scale_bounds[1])
+        return scale.mul(self.quantize(x.div(scale)))
         
     def free(self) -> None:
         pass
