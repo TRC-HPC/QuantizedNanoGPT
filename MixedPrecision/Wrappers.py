@@ -90,7 +90,7 @@ def update_precision(module, func, sort_func, filter_func, iter_num, parent_name
                 update_precision(child, func, sort_func, filter_func, iter_num, parent_name=full_name, update=update)
 
 # TODO: this should be extended also to LayerNorms (what about embeddings??). It should receive instead of a run_flag an instructor that will tell us how to define each layer
-def wrap_linear_layers(module, wrapper_cls, instructions=None, parent_name = None, **kwargs):
+def wrap_linear_layers(module, wrapper_cls, instructions=None, parent_name = None, num_wrapped=0, **kwargs):
     """
     Recursively replace all nn.Linear layers in `module` with instances of `wrapper_cls`.
 
@@ -114,7 +114,9 @@ def wrap_linear_layers(module, wrapper_cls, instructions=None, parent_name = Non
             else:
                 wrapped = wrapper_cls(child, **kwargs)
             setattr(module, name, wrapped)
+            num_wrapped += 1
         else:
             # Recursively wrap submodules
-            wrap_linear_layers(child, wrapper_cls, instructions, parent_name=full_name, **kwargs)
+            if num_wrapped < float("inf"):
+                wrap_linear_layers(child, wrapper_cls, instructions, parent_name=full_name, num_wrapped=num_wrapped, **kwargs)
     return module
